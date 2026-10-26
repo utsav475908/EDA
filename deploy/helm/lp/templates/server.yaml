@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lp-server
+  labels: {{- include "lp.labels" . | nindent 4 }}
+---
+# lp-server provisions workspace namespaces and the Spark/Ray resources inside
+# them. It must hold every permission it grants to workspace service accounts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lp-server
+  labels: {{- include "lp.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, serviceaccounts, services, resourcequotas, pods, configmaps, persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [ray.io]
+    resources: [rayclusters]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lp-server
+  labels: {{- include "lp.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: lp-server}
+subjects:
+  - {kind: ServiceAccount, name: lp-server, namespace: {{ .Release.Namespace }}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lp-server
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels: {app: lp-server}
+  template:
+    metadata:
+      labels: {app: lp-server}
+    spec:
+      serviceAccountName: lp-server
+      securityContext: {runAsNonRoot: true}
+      containers:
+        - name: lp-server
+          image: {{ .Values.server.image }}
+          imagePullPolicy: {{ .Values.server.imagePullPolicy }}
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: LP_COMPUTE_BACKEND, value: kubernetes}
+            - {name: LP_CATALOG_BACKEND, value: lakekeeper}
+            - {name: LP_AUTH_MODE, value: {{ .Values.server.authMode | quote }}}
+            {{- if eq .Values.server.authMode "dev" }}
+            - {name: LP_DEV_TOKENS, value: {{ .Values.server.devTokens | quote }}}
+            {{- else }}
+            - {name: LP_OIDC_ISSUER, value: {{ .Values.server.oidc.issuer | quote }}}
+            - {name: LP_OIDC_AUDIENCE, value: {{ .Values.server.oidc.audience | quote }}}
+            - {name: LP_OIDC_JWKS_URL, value: {{ .Values.server.oidc.jwksUrl | quote }}}
+            {{- end }}
+            - {name: LP_SPARK_IMAGE, value: {{ .Values.server.sparkImage | quote }}}
+            - {name: LP_RAY_IMAGE, value: {{ .Values.server.rayImage | quote }}}
+            - {name: LP_LAKEKEEPER_URL, value: "http://lp-lakekeeper.{{ .Release.Namespace }}.svc:8181"}
+            - {name: LP_ICEBERG_CATALOG_URI, value: "http://lp-lakekeeper.{{ .Release.Namespace }}.svc:8181/catalog"}
+            - {name: LP_WAREHOUSE_BUCKET, value: {{ .Values.s3.warehouseBucket | quote }}}
+            - {name: LP_S3_ENDPOINT, value: {{ .Values.s3.endpoint | quote }}}
+            - {name: LP_S3_REGION, value: {{ .Values.s3.region | quote }}}
+            - name: LP_S3_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.s3.credentialsSecret }}, key: {{ .Values.s3.accessKeyKey }}}}
+            - name: LP_S3_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.s3.credentialsSecret }}, key: {{ .Values.s3.secretKeyKey }}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}}
+          resources: {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lp-server
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.server.service.type }}
+  selector: {app: lp-server}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      {{- with .Values.server.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}

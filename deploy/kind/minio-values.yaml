@@ -1,0 +1,16 @@
+mode: standalone
+rootUser: lp-admin
+rootPassword: lp-admin-change-me   # dev only; use an existingSecret in real clusters
+persistence:
+  size: 20Gi
+resources:
+  requests:
+    memory: 1Gi
+consoleService:
+  type: NodePort
+  nodePort: 30083
+buckets:
+  - name: lp-warehouse
+    policy: none
+  - name: lp-mlflow
+    policy: none

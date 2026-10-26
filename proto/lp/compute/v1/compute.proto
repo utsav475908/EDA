@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package lp.compute.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lakehouse-platform/lp/gen/go/lp/compute/v1;computev1";
+
+// ComputeService manages interactive Spark (Spark Connect) and Ray clusters.
+service ComputeService {
+  rpc CreateCluster(CreateClusterRequest) returns (Cluster) {
+    option (google.api.http) = {post: "/api/v1/workspaces/{workspace_id}/clusters" body: "*"};
+  }
+  rpc GetCluster(GetClusterRequest) returns (Cluster) {
+    option (google.api.http) = {get: "/api/v1/workspaces/{workspace_id}/clusters/{cluster_id}"};
+  }
+  rpc ListClusters(ListClustersRequest) returns (ListClustersResponse) {
+    option (google.api.http) = {get: "/api/v1/workspaces/{workspace_id}/clusters"};
+  }
+  rpc TerminateCluster(TerminateClusterRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/api/v1/workspaces/{workspace_id}/clusters/{cluster_id}"};
+  }
+  // Heartbeat marks the cluster as in use so idle auto-termination is deferred.
+  rpc Heartbeat(HeartbeatRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {post: "/api/v1/workspaces/{workspace_id}/clusters/{cluster_id}/heartbeat"};
+  }
+}
+
+enum ClusterKind {
+  CLUSTER_KIND_UNSPECIFIED = 0;
+  CLUSTER_KIND_SPARK = 1;
+  CLUSTER_KIND_RAY = 2;
+}
+
+enum ClusterState {
+  CLUSTER_STATE_UNSPECIFIED = 0;
+  CLUSTER_STATE_PENDING = 1;
+  CLUSTER_STATE_RUNNING = 2;
+  CLUSTER_STATE_TERMINATING = 3;
+  CLUSTER_STATE_TERMINATED = 4;
+  CLUSTER_STATE_ERROR = 5;
+}
+
+message NodeSpec {
+  string cpu = 1;    // Kubernetes quantity, e.g. "2"
+  string memory = 2; // e.g. "8Gi"
+  int32 gpus = 3;
+}
+
+message AutoScale {
+  int32 min_workers = 1;
+  int32 max_workers = 2;
+}
+
+message Cluster {
+  string id = 1;
+  string workspace_id = 2;
+  string name = 3;
+  ClusterKind kind = 4;
+  string runtime_version = 5;
+  NodeSpec driver = 6;
+  NodeSpec worker = 7;
+  AutoScale autoscale = 8;
+  int32 autoterminate_minutes = 9;
+  ClusterState state = 10;
+  string state_message = 11;
+  string connect_url = 12; // sc://host:15002 for Spark Connect
+  string creator = 13;
+  google.protobuf.Timestamp create_time = 14;
+  google.protobuf.Timestamp last_activity_time = 15;
+}
+
+message CreateClusterRequest {
+  string workspace_id = 1;
+  Cluster cluster = 2;
+}
+
+message GetClusterRequest {
+  string workspace_id = 1;
+  string cluster_id = 2;
+}
+
+message ListClustersRequest {
+  string workspace_id = 1;
+}
+
+message ListClustersResponse {
+  repeated Cluster clusters = 1;
+}
+
+message TerminateClusterRequest {
+  string workspace_id = 1;
+  string cluster_id = 2;
+}
+
+message HeartbeatRequest {
+  string workspace_id = 1;
+  string cluster_id = 2;
+}

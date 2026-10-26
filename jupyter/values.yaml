@@ -1,0 +1,77 @@
+# Zero to JupyterHub (chart 4.x) values for LP.
+proxy:
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30081
+
+hub:
+  config:
+    # Dev: any username, shared password. Production: switch to the OIDC
+    # block in extraConfig below (Keycloak, same realm as lp-server).
+    JupyterHub:
+      authenticator_class: dummy
+    DummyAuthenticator:
+      password: lp-dev
+    Authenticator:
+      allow_all: true
+  extraConfig:
+    lp-env: |
+      import os
+
+      LP_API = "http://lp-server.lp-system.svc:8080"
+
+      async def lp_pre_spawn(spawner):
+          """Inject the caller's LP API token so notebooks act as the user."""
+          spawner.environment["LP_API_URL"] = LP_API
+          auth_state = await spawner.user.get_auth_state()
+          if auth_state and "access_token" in auth_state:
+              spawner.environment["LP_ACCESS_TOKEN"] = auth_state["access_token"]
+          else:
+              # Dev mode only: static token accepted by LP_AUTH_MODE=dev.
+              spawner.environment["LP_ACCESS_TOKEN"] = "dev-admin"
+
+      c.KubeSpawner.pre_spawn_hook = lp_pre_spawn
+
+      # --- Production OIDC (Keycloak) ---------------------------------------
+      # c.JupyterHub.authenticator_class = "generic-oauth"
+      # c.GenericOAuthenticator.client_id = "jupyterhub"
+      # c.GenericOAuthenticator.client_secret = os.environ["OAUTH_CLIENT_SECRET"]
+      # c.GenericOAuthenticator.oauth_callback_url = "https://lp.example.com/hub/oauth_callback"
+      # c.GenericOAuthenticator.authorize_url = "https://keycloak.example.com/realms/lp/protocol/openid-connect/auth"
+      # c.GenericOAuthenticator.token_url = "https://keycloak.example.com/realms/lp/protocol/openid-connect/token"
+      # c.GenericOAuthenticator.userdata_url = "https://keycloak.example.com/realms/lp/protocol/openid-connect/userinfo"
+      # c.GenericOAuthenticator.scope = ["openid", "profile", "groups"]
+      # c.GenericOAuthenticator.username_claim = "preferred_username"
+      # c.GenericOAuthenticator.enable_auth_state = True
+      # c.GenericOAuthenticator.manage_groups = True
+      # c.GenericOAuthenticator.auth_state_groups_key = "oauth_user.groups"
+
+singleuser:
+  image:
+    name: lp/notebook
+    tag: dev
+    pullPolicy: Never
+  cpu: {guarantee: 0.5, limit: 2}
+  memory: {guarantee: 1G, limit: 4G}
+  storage:
+    capacity: 10Gi
+  # Real-time collaboration is enabled by jupyter-collaboration in the image.
+  profileList:
+    - display_name: Standard (attach to a Spark/Ray cluster)
+      default: true
+      profile_options:
+        workspace:
+          display_name: LP workspace ID
+          unlisted_choice:
+            enabled: true
+            display_name: "Workspace ID (w-...)"
+            validation_regex: "^w-[0-9a-f]{12}$"
+            validation_message: "Must look like w-0123456789ab"
+            kubespawner_override:
+              environment:
+                LP_WORKSPACE_ID: "{value}"
+
+cull:
+  enabled: true
+  timeout: 3600

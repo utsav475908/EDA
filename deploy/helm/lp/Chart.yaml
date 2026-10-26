@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lp
+description: Lakehouse Platform control plane, metadata database, Iceberg catalog and MLflow
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

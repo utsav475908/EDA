@@ -1,0 +1,44 @@
+# Iceberg REST catalog. Stores table metadata pointers in PostgreSQL and vends
+# prefix-scoped S3 credentials (MinIO STS) to Spark, Trino and PyIceberg.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: lp-lakekeeper
+  labels: {{- include "lp.labels" . | nindent 4 }}
+stringData:
+  encryptionKey: {{ .Values.lakekeeper.encryptionKey | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lp-lakekeeper
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lp-lakekeeper}
+  template:
+    metadata:
+      labels: {app: lp-lakekeeper}
+    spec:
+      initContainers:
+        - name: migrate
+          image: {{ .Values.lakekeeper.image }}
+          args: [migrate]
+          env: {{- include "lp.lakekeeperEnv" . | nindent 12 }}
+      containers:
+        - name: lakekeeper
+          image: {{ .Values.lakekeeper.image }}
+          args: [serve]
+          env: {{- include "lp.lakekeeperEnv" . | nindent 12 }}
+          ports: [{name: http, containerPort: 8181}]
+          readinessProbe: {httpGet: {path: /health, port: http}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lp-lakekeeper
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  selector: {app: lp-lakekeeper}
+  ports: [{name: http, port: 8181, targetPort: http}]

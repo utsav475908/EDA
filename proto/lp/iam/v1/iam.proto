@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package lp.iam.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/lakehouse-platform/lp/gen/go/lp/iam/v1;iamv1";
+
+// IamService manages the tenancy hierarchy: tenant -> workspace.
+service IamService {
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant) {
+    option (google.api.http) = {post: "/api/v1/tenants" body: "*"};
+  }
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenants"};
+  }
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (Workspace) {
+    option (google.api.http) = {post: "/api/v1/tenants/{tenant_id}/workspaces" body: "*"};
+  }
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse) {
+    option (google.api.http) = {get: "/api/v1/tenants/{tenant_id}/workspaces"};
+  }
+}
+
+enum IsolationTier {
+  ISOLATION_TIER_UNSPECIFIED = 0;
+  ISOLATION_TIER_SOFT = 1; // shared nodes, namespace isolation
+  ISOLATION_TIER_HARD = 2; // dedicated node pool
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  IsolationTier isolation_tier = 3;
+  google.protobuf.Timestamp create_time = 4;
+}
+
+message Workspace {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string namespace_prefix = 4; // e.g. "ws-3f9a"
+  string bucket = 5;           // MinIO bucket holding the warehouse
+  google.protobuf.Timestamp create_time = 6;
+  string storage_prefix = 7;   // key prefix inside bucket; credentials are vended per prefix
+}
+
+message CreateTenantRequest {
+  string name = 1;
+  IsolationTier isolation_tier = 2;
+}
+
+message ListTenantsRequest {}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+}
+
+message CreateWorkspaceRequest {
+  string tenant_id = 1;
+  string name = 2;
+}
+
+message ListWorkspacesRequest {
+  string tenant_id = 1;
+}
+
+message ListWorkspacesResponse {
+  repeated Workspace workspaces = 1;
+}

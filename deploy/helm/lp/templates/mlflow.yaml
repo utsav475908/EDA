@@ -1,0 +1,47 @@
+# MLflow tracking server + model registry. Phase 2 puts ml-svc in front of it
+# to scope experiments and registered models per workspace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lp-mlflow
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lp-mlflow}
+  template:
+    metadata:
+      labels: {app: lp-mlflow}
+    spec:
+      containers:
+        - name: mlflow
+          image: {{ .Values.mlflow.image }}
+          command: [mlflow, server]
+          args:
+            - --host=0.0.0.0
+            - --port=5000
+            - --backend-store-uri=postgresql://$(PG_USER):$(PG_PASSWORD)@lp-pg-rw:5432/mlflow
+            - --artifacts-destination=s3://{{ .Values.s3.mlflowBucket }}/artifacts
+            - --serve-artifacts
+          env:
+            {{- include "lp.pgEnv" . | nindent 12 }}
+            {{- include "lp.s3Env" . | nindent 12 }}
+            - {name: MLFLOW_S3_ENDPOINT_URL, value: {{ .Values.s3.endpoint | quote }}}
+          ports: [{name: http, containerPort: 5000}]
+          readinessProbe: {httpGet: {path: /health, port: http}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lp-mlflow
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.mlflow.service.type }}
+  selector: {app: lp-mlflow}
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+      {{- with .Values.mlflow.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}

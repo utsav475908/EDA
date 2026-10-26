@@ -1,0 +1,16 @@
+server:
+  image: lp/lp-server:dev
+  imagePullPolicy: Never
+  service:
+    type: NodePort
+    nodePort: 30080
+  authMode: dev
+  devTokens: "dev-admin=admin:lp-admins"
+postgres:
+  instances: 1
+  storage: 10Gi
+mlflow:
+  image: lp/mlflow:2.18.0-lp1
+  service:
+    type: NodePort
+    nodePort: 30082

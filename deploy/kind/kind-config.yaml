@@ -1,0 +1,12 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: lp
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - {containerPort: 30080, hostPort: 8080}   # lp-server
+      - {containerPort: 30081, hostPort: 8000}   # JupyterHub
+      - {containerPort: 30082, hostPort: 5000}   # MLflow
+      - {containerPort: 30083, hostPort: 9001}   # MinIO console
+  - role: worker
+  - role: worker

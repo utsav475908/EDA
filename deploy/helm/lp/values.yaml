@@ -1,0 +1,47 @@
+# Image tags are pinned; verify them against upstream registries before
+# promoting a platform release.
+server:
+  image: lp/lp-server:0.1.0
+  imagePullPolicy: IfNotPresent
+  replicas: 1          # reconciler is not yet leader-elected; keep at 1
+  service:
+    type: ClusterIP
+    nodePort: null
+  authMode: oidc       # dev | oidc
+  devTokens: ""
+  oidc:
+    issuer: https://keycloak.example.com/realms/lp
+    audience: lp
+    jwksUrl: https://keycloak.example.com/realms/lp/protocol/openid-connect/certs
+  sparkImage: lp/spark-runtime:3.5.3-lp1
+  rayImage: rayproject/ray:2.40.0-py311
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+s3:
+  endpoint: http://minio.lp-system.svc:9000
+  region: local
+  warehouseBucket: lp-warehouse
+  mlflowBucket: lp-mlflow
+  # Secret holding the S3 credentials (MinIO chart default: keys rootUser/rootPassword).
+  credentialsSecret: minio
+  accessKeyKey: rootUser
+  secretKeyKey: rootPassword
+
+postgres:
+  instances: 3
+  storage: 50Gi
+  # Extra databases created on the CloudNativePG cluster, all owned by "lp".
+  databases: [lakekeeper, mlflow, jupyterhub]
+
+lakekeeper:
+  image: quay.io/lakekeeper/catalog:v0.9.3
+  # 32+ char key used by Lakekeeper to encrypt stored storage credentials.
+  encryptionKey: change-me-to-a-32-char-random-key!!
+
+mlflow:
+  image: lp/mlflow:2.18.0-lp1
+  service:
+    type: ClusterIP
+    nodePort: null

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package lp.common.v1;
+
+option go_package = "github.com/lakehouse-platform/lp/gen/go/lp/common/v1;commonv1";
+
+// PageRequest is the standard pagination input for List RPCs.
+message PageRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}

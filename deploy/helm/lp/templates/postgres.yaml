@@ -1,0 +1,20 @@
+# Single HA PostgreSQL cluster; each component gets its own database.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: lp-pg
+  labels: {{- include "lp.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  storage:
+    size: {{ .Values.postgres.storage }}
+  bootstrap:
+    initdb:
+      database: lp_platform
+      owner: lp
+      postInitSQL:
+        {{- range .Values.postgres.databases }}
+        - CREATE DATABASE {{ . }} OWNER lp;
+        {{- end }}
+  monitoring:
+    enablePodMonitor: false
