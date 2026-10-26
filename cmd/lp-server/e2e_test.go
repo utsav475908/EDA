@@ -46,6 +46,7 @@ func newHarness(t *testing.T, tokens map[string]string) *harness {
 		auth.NewDevAuthenticator(tokens),
 		&iam.Service{Store: st, Backend: be, Catalog: catalog.Noop{}, WarehouseBucket: "lp-warehouse", Now: clk.Now},
 		&compute.Service{Store: st, Policy: compute.DefaultPolicy, Now: clk.Now},
+		readiness(st),
 	))
 	t.Cleanup(h.srv.Close)
 	return h
@@ -188,6 +189,7 @@ func newHarnessShared(t *testing.T, base *harness, tokens map[string]string) *ha
 		auth.NewDevAuthenticator(tokens),
 		&iam.Service{Store: st, Backend: base.backend, Catalog: catalog.Noop{}, WarehouseBucket: "lp-warehouse", Now: base.clock.Now},
 		&compute.Service{Store: st, Policy: compute.DefaultPolicy, Now: base.clock.Now},
+		readiness(st),
 	))
 	t.Cleanup(h.srv.Close)
 	return h

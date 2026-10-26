@@ -63,12 +63,8 @@ CREATE TABLE outbox (
     published_at  timestamptz
 );
 
--- Defense in depth: tenant-scoped tables only expose rows for lp.tenant_id,
--- which lp-server sets per transaction (SET LOCAL lp.tenant_id = ...).
--- The reconciler connects as a role with BYPASSRLS.
-ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clusters ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON workspaces
-    USING (tenant_id = current_setting('lp.tenant_id', true));
-CREATE POLICY tenant_isolation ON clusters
-    USING (tenant_id = current_setting('lp.tenant_id', true));
+-- Tenant isolation is enforced in the service layer. Row-level security is
+-- deliberately not enabled yet: lp-server connects as the table owner, which
+-- bypasses RLS, so policies here would give false assurance. Phase 2 adds a
+-- non-owner application role, FORCE ROW LEVEL SECURITY and per-transaction
+-- SET LOCAL lp.tenant_id.

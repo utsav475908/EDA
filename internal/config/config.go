@@ -11,6 +11,11 @@ import (
 type Config struct {
 	HTTPAddr string
 
+	// DatabaseURL selects the PostgreSQL store; empty uses the in-memory store.
+	DatabaseURL string
+	// Migrate applies embedded schema migrations on startup.
+	Migrate bool
+
 	// AuthMode is "dev" (static bearer tokens) or "oidc" (JWTs from Keycloak).
 	AuthMode     string
 	DevTokens    map[string]string // token -> "subject:group1,group2"
@@ -38,6 +43,8 @@ type Config struct {
 func Load() Config {
 	return Config{
 		HTTPAddr:        env("LP_HTTP_ADDR", ":8080"),
+		DatabaseURL:     env("LP_DATABASE_URL", ""),
+		Migrate:         env("LP_MIGRATE", "true") == "true",
 		AuthMode:        env("LP_AUTH_MODE", "dev"),
 		DevTokens:       parseDevTokens(env("LP_DEV_TOKENS", "dev-admin=admin:lp-admins")),
 		OIDCIssuer:      env("LP_OIDC_ISSUER", ""),

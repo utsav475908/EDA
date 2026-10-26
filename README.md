@@ -23,7 +23,7 @@ See `docs/adr/` for the key decisions.
 | `internal/compute` | Cluster API, policy validation, reconciler, idle auto-termination |
 | `internal/k8s` | Manifests (Spark Connect, RayCluster, workspace isolation), REST client |
 | `internal/catalog` | Lakekeeper warehouse provisioning |
-| `migrations/` | PostgreSQL schema (with row-level security per tenant) |
+| `migrations/` | PostgreSQL schema, embedded and applied on startup |
 | `runtimes/` | Spark runtime, notebook, MLflow images |
 | `jupyter/` | JupyterHub (z2jh) values: Spark Connect kernels, `%lp_attach`, RTC |
 | `deploy/helm/lp` | Chart: lp-server, CloudNativePG, Lakekeeper, MLflow |
@@ -32,11 +32,20 @@ See `docs/adr/` for the key decisions.
 
 ## Quick start
 
+First build (fetches pgx and writes `go.sum`):
+
+```bash
+go mod tidy
+make test       # unit + API tests; in-memory store
+make test-pg    # store conformance suite against PostgreSQL 16 in Docker
+```
+
 Control plane only (simulated compute, no Kubernetes):
 
 ```bash
-make test
-make run        # :8080, token "dev-admin"
+make run        # :8080, token "dev-admin", in-memory store
+# or persist to PostgreSQL (schema is migrated on startup):
+LP_DATABASE_URL='postgres://user:pass@localhost:5432/lp_platform' make run
 
 H='Authorization: Bearer dev-admin'
 curl -H "$H" -d '{"name":"analytics"}' localhost:8080/api/v1/tenants
@@ -81,17 +90,19 @@ Done and tested (`go test ./...`):
 - [x] Spark Connect + Iceberg REST + dynamic allocation manifests; KubeRay manifests
 - [x] Workspace namespace/RBAC/NetworkPolicy/quota provisioning
 - [x] Lakekeeper warehouse per workspace
+- [x] PostgreSQL store (pgx v5) + embedded migrations with advisory lock;
+      shared conformance suite for memory and PostgreSQL stores
 
 Written but not yet validated in a live cluster:
 - [ ] Helm chart, kind bootstrap, Dockerfiles, JupyterHub values, Next.js UI
       (verify the pinned image and chart versions when you first run them)
 
 Next for Phase 1:
-- [ ] PostgreSQL `Store` implementation (pgx + sqlc) against `migrations/`
 - [ ] `buf generate` in CI; replace hand-written handlers with grpc-gateway
 - [ ] Leader election for the reconciler (multi-replica lp-server)
 - [ ] JupyterHub: spawn notebooks into the workspace's notebooks namespace
 - [ ] Keycloak in the kind stack; NextAuth OIDC session in the UI
+- [ ] Non-owner DB role + `FORCE ROW LEVEL SECURITY` for tenant tables
 
 ## Roadmap
 

@@ -20,6 +20,8 @@ import (
 	"github.com/lakehouse-platform/lp/internal/iam"
 	"github.com/lakehouse-platform/lp/internal/k8s"
 	"github.com/lakehouse-platform/lp/internal/store"
+	"github.com/lakehouse-platform/lp/internal/store/pgstore"
+	"github.com/lakehouse-platform/lp/migrations"
 )
 
 func main() {
@@ -43,8 +45,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// TODO(phase1): PostgreSQL store (migrations/ holds the schema).
-	st := store.NewMemory()
+	st, closeStore, err := newStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
 
 	cat, err := newCatalog(cfg)
 	if err != nil {
@@ -57,7 +62,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           NewHandler(authn, iamSvc, computeSvc),
+		Handler:           NewHandler(authn, iamSvc, computeSvc, readiness(st)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -73,17 +78,53 @@ func run() error {
 	return nil
 }
 
-// NewHandler wires the public REST API. Health endpoints are unauthenticated.
-func NewHandler(authn auth.Authenticator, iamSvc *iam.Service, computeSvc *compute.Service) http.Handler {
+// NewHandler wires the public REST API. Health endpoints are unauthenticated;
+// ready reports whether dependencies (the database) are reachable.
+func NewHandler(authn auth.Authenticator, iamSvc *iam.Service, computeSvc *compute.Service, ready func(context.Context) error) http.Handler {
 	apiMux := http.NewServeMux()
 	iamSvc.Register(apiMux)
 	computeSvc.Register(apiMux)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	root.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	root.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := ready(ctx); err != nil {
+			slog.WarnContext(ctx, "not ready", "err", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
 	root.Handle("/api/", auth.Middleware(authn, apiMux))
 	return api.Recover(api.Logging(root))
+}
+
+func newStore(ctx context.Context, cfg config.Config) (store.Store, func(), error) {
+	if cfg.DatabaseURL == "" {
+		slog.Warn("LP_DATABASE_URL not set: using in-memory store, data is lost on restart")
+		return store.NewMemory(), func() {}, nil
+	}
+	pg, err := pgstore.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cfg.Migrate {
+		if err := pgstore.Migrate(ctx, pg.Pool(), migrations.FS); err != nil {
+			pg.Close()
+			return nil, nil, err
+		}
+	}
+	return pg, pg.Close, nil
+}
+
+// readiness pings stores that support it (PostgreSQL); others are always ready.
+func readiness(st store.Store) func(context.Context) error {
+	if p, ok := st.(interface{ Ping(context.Context) error }); ok {
+		return p.Ping
+	}
+	return func(context.Context) error { return nil }
 }
 
 func newBackend(cfg config.Config) (k8s.Backend, error) {

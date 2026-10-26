@@ -58,6 +58,8 @@ spec:
           imagePullPolicy: {{ .Values.server.imagePullPolicy }}
           ports: [{name: http, containerPort: 8080}]
           env:
+            - name: LP_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: lp-pg-app, key: uri}}
             - {name: LP_COMPUTE_BACKEND, value: kubernetes}
             - {name: LP_CATALOG_BACKEND, value: lakekeeper}
             - {name: LP_AUTH_MODE, value: {{ .Values.server.authMode | quote }}}
